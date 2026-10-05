@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fertilizerService, farmService, fieldService } from '@/services/api';
 import Table, { TableRow, TableCell } from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
@@ -29,6 +29,7 @@ const emptyForm = {
 const Fertilizers: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [farmFilter, setFarmFilter] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -54,10 +55,19 @@ const Fertilizers: React.FC = () => {
     enabled: !!form.farm_id,
   });
 
-  const { data: records, isLoading, refetch } = useQuery({
+  const { data: records, isLoading } = useQuery({
     queryKey: ['fertilizers', debouncedSearch, farmFilter],
-    queryFn: () => fertilizerService.getAll({ search: debouncedSearch, farm_id: farmFilter || undefined }),
+    queryFn: () =>
+      fertilizerService.getAll({
+        search: debouncedSearch,
+        farm_id: farmFilter || undefined,
+      }),
   });
+
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['fertilizers'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -65,7 +75,7 @@ const Fertilizers: React.FC = () => {
       await fertilizerService.delete(deleteId);
       showToast('Fertilizer record deleted');
       setDeleteId(null);
-      refetch();
+      refreshAll();
     } catch (error) {
       showToast('Failed to delete record', 'error');
     }
@@ -80,9 +90,17 @@ const Fertilizers: React.FC = () => {
   const openEditModal = (record: any) => {
     const rid = record._id || record.id;
     const farmId =
-      record.farm_id?._id || record.farm_id || record.farm?._id || record.farm?.id || '';
+      record.farm_id?._id ||
+      record.farm_id ||
+      record.farm?._id ||
+      record.farm?.id ||
+      '';
     const fieldId =
-      record.field_id?._id || record.field_id || record.field?._id || record.field?.id || '';
+      record.field_id?._id ||
+      record.field_id ||
+      record.field?._id ||
+      record.field?.id ||
+      '';
     setEditingId(rid);
     setForm({
       date: record.date
@@ -91,7 +109,8 @@ const Fertilizers: React.FC = () => {
       fertilizer_name: record.fertilizer_name || '',
       farm_id: farmId,
       field_id: fieldId,
-      quantity: record.quantity != null ? String(record.quantity) : '',
+      quantity:
+        record.quantity != null ? String(record.quantity) : '',
       unit: record.unit || 'kg',
       cost: record.cost != null ? String(record.cost) : '',
       notes: record.notes || '',
@@ -118,7 +137,8 @@ const Fertilizers: React.FC = () => {
         unit: form.unit,
       };
       if (form.field_id) payload.field_id = form.field_id;
-      if (form.quantity !== '') payload.quantity = Number(form.quantity) || 0;
+      if (form.quantity !== '')
+        payload.quantity = Number(form.quantity) || 0;
       if (form.cost !== '') payload.cost = Number(form.cost) || 0;
       if (form.notes) payload.notes = form.notes;
 
@@ -132,11 +152,16 @@ const Fertilizers: React.FC = () => {
       setShowModal(false);
       setEditingId(null);
       setForm(emptyForm);
-      refetch();
+      refreshAll();
     } catch (error: any) {
       const message =
-        error?.response?.data?.message || error?.message || 'Failed to save record';
-      console.error('SAVE FERTILIZER FAILED:', error?.response?.data || error);
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to save record';
+      console.error(
+        'SAVE FERTILIZER FAILED:',
+        error?.response?.data || error
+      );
       showToast(message, 'error');
     } finally {
       setSaving(false);
@@ -144,6 +169,7 @@ const Fertilizers: React.FC = () => {
   };
 
   const getFarmName = (record: any) => {
+    if (record.farm_id?.name) return record.farm_id.name;
     if (record.farm?.name) return record.farm.name;
     const id = record.farm_id?._id || record.farm_id || record.farm?._id;
     if (id && farms) {
@@ -154,6 +180,7 @@ const Fertilizers: React.FC = () => {
   };
 
   const getFieldName = (record: any) => {
+    if (record.field_id?.name) return record.field_id.name;
     if (record.field?.name) return record.field.name;
     const id = record.field_id?._id || record.field_id || record.field?._id;
     if (id && allFields) {
@@ -185,7 +212,12 @@ const Fertilizers: React.FC = () => {
         <div className="w-48">
           <Select
             placeholder="All Farms"
-            options={farms?.map((f: any) => ({ value: f._id || f.id, label: f.name })) || []}
+            options={
+              farms?.map((f: any) => ({
+                value: f._id || f.id,
+                label: f.name,
+              })) || []
+            }
             value={farmFilter}
             onChange={(e) => setFarmFilter(e.target.value)}
           />
@@ -193,17 +225,37 @@ const Fertilizers: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-20"><Spinner /></div>
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
       ) : records && records.length > 0 ? (
-        <Table headers={['Date', 'Fertilizer', 'Farm', 'Field', 'Quantity', 'Cost', 'Actions']}>
+        <Table
+          headers={[
+            'Date',
+            'Fertilizer',
+            'Farm',
+            'Field',
+            'Quantity',
+            'Cost',
+            'Actions',
+          ]}
+        >
           {records.map((record: any) => (
             <TableRow key={record._id || record.id}>
-              <TableCell>{formatDate(record.date)}</TableCell>
-              <TableCell className="font-medium">{record.fertilizer_name}</TableCell>
+              <TableCell>
+                {record.date ? formatDate(record.date) : '-'}
+              </TableCell>
+              <TableCell className="font-medium">
+                {record.fertilizer_name}
+              </TableCell>
               <TableCell>{getFarmName(record)}</TableCell>
               <TableCell>{getFieldName(record)}</TableCell>
-              <TableCell>{record.quantity} {record.unit}</TableCell>
-              <TableCell>{record.cost ? formatCurrency(record.cost) : '-'}</TableCell>
+              <TableCell>
+                {record.quantity} {record.unit}
+              </TableCell>
+              <TableCell>
+                {record.cost ? formatCurrency(record.cost) : '-'}
+              </TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <button
@@ -237,16 +289,18 @@ const Fertilizers: React.FC = () => {
 
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
           onClick={() => !saving && setShowModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="my-8 w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">
-                {editingId ? 'Edit Fertilizer Record' : 'Record Fertilizer'}
+                {editingId
+                  ? 'Edit Fertilizer Record'
+                  : 'Record Fertilizer'}
               </h2>
               <button
                 onClick={() => setShowModal(false)}
@@ -259,33 +313,52 @@ const Fertilizers: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium">Date *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Date *
+                </label>
                 <Input
                   type="date"
                   value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, date: e.target.value })
+                  }
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Fertilizer Name *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Fertilizer Name *
+                </label>
                 <Input
                   value={form.fertilizer_name}
-                  onChange={(e) => setForm({ ...form, fertilizer_name: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, fertilizer_name: e.target.value })
+                  }
                   placeholder="e.g. NPK 15-15-15, Urea"
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Farm *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Farm *
+                </label>
                 <Select
                   placeholder="Select a farm"
-                  options={farms?.map((f: any) => ({ value: f._id || f.id, label: f.name })) || []}
+                  options={
+                    farms?.map((f: any) => ({
+                      value: f._id || f.id,
+                      label: f.name,
+                    })) || []
+                  }
                   value={form.farm_id}
                   onChange={(e) =>
-                    setForm({ ...form, farm_id: e.target.value, field_id: '' })
+                    setForm({
+                      ...form,
+                      farm_id: e.target.value,
+                      field_id: '',
+                    })
                   }
                 />
               </div>
@@ -293,31 +366,46 @@ const Fertilizers: React.FC = () => {
               <div>
                 <label className="mb-1 block text-sm font-medium">Field</label>
                 <Select
-                  placeholder={form.farm_id ? 'Select a field' : 'Select a farm first'}
+                  placeholder={
+                    form.farm_id ? 'Select a field' : 'Select a farm first'
+                  }
                   options={
-                    fieldsForFarm?.map((f: any) => ({ value: f._id || f.id, label: f.name })) || []
+                    fieldsForFarm?.map((f: any) => ({
+                      value: f._id || f.id,
+                      label: f.name,
+                    })) || []
                   }
                   value={form.field_id}
-                  onChange={(e) => setForm({ ...form, field_id: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, field_id: e.target.value })
+                  }
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Quantity</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Quantity
+                  </label>
                   <Input
                     type="number"
                     value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, quantity: e.target.value })
+                    }
                     placeholder="0"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Unit</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    Unit
+                  </label>
                   <select
                     value={form.unit}
-                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    onChange={(e) =>
+                      setForm({ ...form, unit: e.target.value })
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
                   >
                     <option value="kg">kg</option>
                     <option value="g">g</option>
@@ -333,18 +421,24 @@ const Fertilizers: React.FC = () => {
                 <Input
                   type="number"
                   value={form.cost}
-                  onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, cost: e.target.value })
+                  }
                   placeholder="0.00"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Notes</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Notes
+                </label>
                 <textarea
                   value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, notes: e.target.value })
+                  }
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
                   placeholder="Optional details..."
                 />
               </div>
@@ -359,7 +453,11 @@ const Fertilizers: React.FC = () => {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>
-                  {saving ? 'Saving...' : editingId ? 'Update Record' : 'Save Record'}
+                  {saving
+                    ? 'Saving...'
+                    : editingId
+                    ? 'Update Record'
+                    : 'Save Record'}
                 </Button>
               </div>
             </form>
