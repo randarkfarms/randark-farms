@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { expenseService, farmService } from '@/services/api';
 import Table, { TableRow, TableCell } from '@/components/ui/Table';
 import Card from '@/components/ui/Card';
@@ -17,6 +17,9 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 const CATEGORIES = [
+  'Land',
+  'Land preparation',
+  'Consultancy',
   'Fertilizer',
   'Chemicals',
   'Seeds',
@@ -28,7 +31,6 @@ const CATEGORIES = [
   'Irrigation',
   'Equipment',
   'Packaging',
-  'Land preparation',
   'Other',
 ] as const;
 
@@ -46,6 +48,7 @@ const emptyForm = {
 const Expenses: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [farmFilter, setFarmFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -61,7 +64,7 @@ const Expenses: React.FC = () => {
     queryFn: () => farmService.getAll(),
   });
 
-  const { data: expenses, isLoading, refetch } = useQuery({
+  const { data: expenses, isLoading } = useQuery({
     queryKey: ['expenses', debouncedSearch, farmFilter, categoryFilter],
     queryFn: () =>
       expenseService.getAll({
@@ -71,13 +74,18 @@ const Expenses: React.FC = () => {
       }),
   });
 
+  const refreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
       await expenseService.delete(deleteId);
       showToast('Expense deleted');
       setDeleteId(null);
-      refetch();
+      refreshAll();
     } catch (error) {
       showToast('Failed to delete expense', 'error');
     }
@@ -92,7 +100,11 @@ const Expenses: React.FC = () => {
   const openEditModal = (expense: any) => {
     const eid = expense._id || expense.id;
     const farmId =
-      expense.farm_id?._id || expense.farm_id || expense.farm?._id || expense.farm?.id || '';
+      expense.farm_id?._id ||
+      expense.farm_id ||
+      expense.farm?._id ||
+      expense.farm?.id ||
+      '';
     setEditingId(eid);
     setForm({
       date: expense.date
@@ -138,10 +150,12 @@ const Expenses: React.FC = () => {
       setShowModal(false);
       setEditingId(null);
       setForm(emptyForm);
-      refetch();
+      refreshAll();
     } catch (error: any) {
       const message =
-        error?.response?.data?.message || error?.message || 'Failed to save expense';
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to save expense';
       console.error('SAVE EXPENSE FAILED:', error?.response?.data || error);
       showToast(message, 'error');
     } finally {
@@ -150,6 +164,7 @@ const Expenses: React.FC = () => {
   };
 
   const getFarmName = (expense: any) => {
+    if (expense.farm_id?.name) return expense.farm_id.name;
     if (expense.farm?.name) return expense.farm.name;
     const id = expense.farm_id?._id || expense.farm_id || expense.farm?._id;
     if (id && farms) {
@@ -160,7 +175,10 @@ const Expenses: React.FC = () => {
   };
 
   const totalExpenses =
-    expenses?.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0) || 0;
+    expenses?.reduce(
+      (sum: number, e: any) => sum + (Number(e.amount) || 0),
+      0
+    ) || 0;
 
   return (
     <div>
@@ -189,7 +207,12 @@ const Expenses: React.FC = () => {
         <div className="w-48">
           <Select
             placeholder="All Farms"
-            options={farms?.map((f: any) => ({ value: f._id || f.id, label: f.name })) || []}
+            options={
+              farms?.map((f: any) => ({
+                value: f._id || f.id,
+                label: f.name,
+              })) || []
+            }
             value={farmFilter}
             onChange={(e) => setFarmFilter(e.target.value)}
           />
@@ -205,13 +228,28 @@ const Expenses: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-20"><Spinner /></div>
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
       ) : expenses && expenses.length > 0 ? (
-        <Table headers={['Date', 'Category', 'Description', 'Farm', 'Amount', 'Actions']}>
+        <Table
+          headers={[
+            'Date',
+            'Category',
+            'Description',
+            'Farm',
+            'Amount',
+            'Actions',
+          ]}
+        >
           {expenses.map((expense: any) => (
             <TableRow key={expense._id || expense.id}>
-              <TableCell>{formatDate(expense.date)}</TableCell>
-              <TableCell className="font-medium">{expense.category}</TableCell>
+              <TableCell>
+                {expense.date ? formatDate(expense.date) : '-'}
+              </TableCell>
+              <TableCell className="font-medium">
+                {expense.category}
+              </TableCell>
               <TableCell>{expense.description}</TableCell>
               <TableCell>{getFarmName(expense)}</TableCell>
               <TableCell>{formatCurrency(expense.amount)}</TableCell>
@@ -248,11 +286,11 @@ const Expenses: React.FC = () => {
 
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
           onClick={() => !saving && setShowModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="my-8 w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -270,68 +308,100 @@ const Expenses: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium">Date *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Date *
+                </label>
                 <Input
                   type="date"
                   value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, date: e.target.value })
+                  }
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Category *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Category *
+                </label>
                 <select
                   value={form.category}
                   onChange={(e) =>
-                    setForm({ ...form, category: e.target.value as ExpenseCategory })
+                    setForm({
+                      ...form,
+                      category: e.target.value as ExpenseCategory,
+                    })
                   }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
                 >
                   {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Description *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Description *
+                </label>
                 <Input
                   value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
                   placeholder="e.g. Bought 10 bags of NPK"
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Farm</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Farm
+                </label>
                 <Select
                   placeholder="Select a farm (optional)"
-                  options={farms?.map((f: any) => ({ value: f._id || f.id, label: f.name })) || []}
+                  options={
+                    farms?.map((f: any) => ({
+                      value: f._id || f.id,
+                      label: f.name,
+                    })) || []
+                  }
                   value={form.farm_id}
-                  onChange={(e) => setForm({ ...form, farm_id: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, farm_id: e.target.value })
+                  }
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Amount *</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Amount (GHS) *
+                </label>
                 <Input
                   type="number"
                   value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, amount: e.target.value })
+                  }
                   placeholder="0.00"
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Notes</label>
+                <label className="mb-1 block text-sm font-medium">
+                  Notes
+                </label>
                 <textarea
                   value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, notes: e.target.value })
+                  }
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
                   placeholder="Optional details..."
                 />
               </div>
@@ -346,7 +416,11 @@ const Expenses: React.FC = () => {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>
-                  {saving ? 'Saving...' : editingId ? 'Update Expense' : 'Save Expense'}
+                  {saving
+                    ? 'Saving...'
+                    : editingId
+                    ? 'Update Expense'
+                    : 'Save Expense'}
                 </Button>
               </div>
             </form>
