@@ -6,6 +6,7 @@ import RecentActivities from '@/components/dashboard/RecentActivities';
 import ExpenseChart from '@/components/dashboard/ExpenseChart';
 import HarvestChart from '@/components/dashboard/HarvestChart';
 import InventoryAlerts from '@/components/dashboard/InventoryAlerts';
+import ExpenseCategoryPie from '@/components/dashboard/ExpenseCategoryPie';
 import Spinner from '@/components/ui/Spinner';
 import {
   MapPin,
@@ -22,6 +23,7 @@ import {
   TrendingUp,
   Calendar,
   Sparkles,
+  PieChart as PieIcon,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency } from '@/lib/utils';
@@ -34,11 +36,10 @@ const Dashboard: React.FC = () => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: dashboardService.getDashboardData,
-    // ── Auto-refresh behaviour ─────────────────────
-    refetchOnMount: 'always',      // refetch every time the page mounts
-    refetchOnWindowFocus: true,    // refetch when you tab back to the browser
-    refetchInterval: 60_000,       // refetch every 60s while the page is open
-    staleTime: 0,                  // never treat cached data as fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    staleTime: 0,
   });
 
   if (isLoading) {
@@ -72,7 +73,6 @@ const Dashboard: React.FC = () => {
   const overdueCount =
     data?.upcoming_tasks?.filter((t: any) => t.status === 'Overdue').length || 0;
 
-  // Stat cards with distinct colour identity + icon + optional "trend" hint
   const stats = [
     {
       title: 'Total Farms',
@@ -80,8 +80,6 @@ const Dashboard: React.FC = () => {
       icon: <MapPin size={22} />,
       subtext: 'Registered farms',
       gradient: 'from-emerald-500 to-teal-600',
-      accent: 'text-emerald-600',
-      bg: 'bg-emerald-50',
     },
     {
       title: 'Total Area',
@@ -90,8 +88,6 @@ const Dashboard: React.FC = () => {
       icon: <Sprout size={22} />,
       subtext: 'Across all farms',
       gradient: 'from-green-500 to-lime-600',
-      accent: 'text-green-600',
-      bg: 'bg-green-50',
     },
     {
       title: 'Monthly Expenses',
@@ -99,8 +95,6 @@ const Dashboard: React.FC = () => {
       icon: <Wallet size={22} />,
       subtext: 'This month',
       gradient: 'from-amber-500 to-orange-600',
-      accent: 'text-amber-600',
-      bg: 'bg-amber-50',
     },
     {
       title: 'Upcoming Tasks',
@@ -109,12 +103,9 @@ const Dashboard: React.FC = () => {
       subtext: overdueCount > 0 ? `${overdueCount} overdue` : 'On track',
       subtextClass: overdueCount > 0 ? 'text-red-600 font-medium' : '',
       gradient: 'from-indigo-500 to-purple-600',
-      accent: 'text-indigo-600',
-      bg: 'bg-indigo-50',
     },
   ];
 
-  // Quick action tiles
   const quickActions = [
     { label: 'Add Farm', icon: MapPin, to: '/farms', color: 'bg-emerald-500' },
     { label: 'Add Activity', icon: Activity, to: '/activities', color: 'bg-blue-500' },
@@ -223,6 +214,35 @@ const Dashboard: React.FC = () => {
         ))}
       </div>
 
+      {/* ── EXPENSE PIE + TREND ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="mb-4 flex items-center gap-2">
+            <PieIcon size={18} className="text-amber-500" />
+            <div>
+              <h2 className="text-base font-semibold">
+                Expenses by Category
+              </h2>
+              <p className="text-xs text-gray-500">
+                Where your money is going
+              </p>
+            </div>
+          </div>
+          <ExpenseCategoryPie data={data?.expenses_by_category || []} />
+        </div>
+
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 transition-shadow hover:shadow-md">
+          <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
+            <Wallet size={18} className="text-amber-500" />
+            Expenses Trend
+          </h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Monthly spending over time
+          </p>
+          <ExpenseChart data={data?.expenses_by_month || []} />
+        </div>
+      </div>
+
       {/* ── TASKS + ALERTS / ACTIVITY ───────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -286,25 +306,16 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ── CHARTS ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 transition-shadow hover:shadow-md">
-          <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
-            <Wallet size={18} className="text-amber-500" />
-            Expenses Trend
-          </h2>
-          <p className="text-xs text-gray-500 mb-3">Monthly spending over time</p>
-          <ExpenseChart data={data?.expenses_by_month || []} />
-        </div>
-
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 transition-shadow hover:shadow-md">
-          <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
-            <Package size={18} className="text-orange-500" />
-            Harvest Revenue
-          </h2>
-          <p className="text-xs text-gray-500 mb-3">Income from harvests</p>
-          <HarvestChart data={data?.harvest_by_month || []} />
-        </div>
+      {/* ── HARVEST CHART ────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 transition-shadow hover:shadow-md">
+        <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
+          <Package size={18} className="text-orange-500" />
+          Harvest Revenue
+        </h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Income from harvests
+        </p>
+        <HarvestChart data={data?.harvest_by_month || []} />
       </div>
 
       {/* ── QUICK ACTIONS ────────────────────────────────── */}

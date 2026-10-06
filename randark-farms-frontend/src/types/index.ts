@@ -282,10 +282,12 @@ export interface ReportFilters {
 
 export interface FarmSummary {
   total_farms: number;
+  total_fields?: number;
   total_area: number;
   active_crops: number;
   monthly_expenses: number;
   upcoming_tasks: number;
+  overdue_tasks?: number;
   low_stock_items: number;
 }
 
@@ -294,6 +296,7 @@ export interface DashboardData {
   upcoming_tasks: Task[];
   recent_activities: Activity[];
   expenses_by_month: { month: string; total: number }[];
+  expenses_by_category: { category: string; total: number }[];   // ← added
   harvest_by_month: { month: string; quantity: number }[];
   inventory_alerts: InventoryItem[];
 }
